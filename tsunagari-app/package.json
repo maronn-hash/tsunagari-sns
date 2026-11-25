@@ -1,0 +1,14 @@
+{
+  "name": "tsunagari",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test tests.mjs auth-tests.mjs storage-tests.mjs config-tests.mjs launcher-tests.mjs profile-tests.mjs search-compose-tests.mjs calendar-tests.mjs fixed-url-tests.mjs admin-features-tests.mjs video-push-tests.mjs mobile-tests.mjs push-content-tests.mjs",
+    "start": "node server.mjs",
+    "dev": "node preview.mjs"
+  }
+}

@@ -1,0 +1,25 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import worker from './dist/server/index.js';import {createEnv} from './local-adapter.mjs';
+test('shared SNS end-to-end permissions and persistence',async()=>{const env=createEnv();env.ADMIN_SETUP_TOKEN='test-only-bootstrap-token-32-characters';const cookies={};async function request(path,{method='GET',user='alice',body,origin='https://test.local'}={}){const headers={'origin':origin};if(cookies[user])headers.cookie=cookies[user];if(body&&!(body instanceof FormData)){headers['content-type']='application/json';body=JSON.stringify(body)}return worker.fetch(new Request('https://test.local'+path,{method,headers,body}),env)}
+const reg=await request('/api/auth/register',{method:'POST',body:{username:'alice',name:'Alice',password:'test-password-alice',code:env.ADMIN_SETUP_TOKEN}});assert.equal(reg.status,201);cookies.alice=reg.headers.get('set-cookie').split(';')[0];
+const invite=await(await request('/api/admin/invites',{method:'POST',body:{username:'bob'}})).json();const bob=await request('/api/auth/register',{method:'POST',body:{username:'bob',name:'Bob',password:'test-password-bob',code:invite.code}});assert.equal(bob.status,201);cookies.bob=bob.headers.get('set-cookie').split(';')[0];
+assert.equal((await request('/api/posts',{user:null})).status,401);
+assert.equal((await request('/api/me',{method:'PATCH',origin:'https://evil.local',body:{name:'evil',department:''}})).status,403);
+assert.equal((await request('/api/me',{method:'PATCH',body:{name:'Alice <script>',department:'開発'}})).status,200);
+let f=new FormData();f.set('body','チームで共有するテスト投稿');f.set('category','仕事のヒント');const created=await request('/api/posts',{method:'POST',body:f});assert.equal(created.status,201);const {id}=await created.json();
+let data=await(await request('/api/posts',{user:'bob'})).json();assert.equal(data.posts[0].body,'チームで共有するテスト投稿');assert.equal(data.posts[0].mine,false);
+assert.equal((await request('/api/posts/'+id,{method:'DELETE',user:'bob'})).status,403);
+await request('/api/posts/'+id+'/likes',{method:'PUT',user:'bob'});await request('/api/posts/'+id+'/likes',{method:'PUT',user:'bob'});
+data=await(await request('/api/posts?mode=liked',{user:'bob'})).json();assert.equal(data.posts.length,1);assert.equal(data.posts[0].like_count,1);
+assert.equal((await request('/api/posts/'+id+'/comments',{method:'POST',user:'bob',body:{body:'ありがとう'}})).status,201);
+assert.equal((await(await request('/api/posts/'+id+'/comments')).json())[0].body,'ありがとう');
+assert.equal((await(await request('/api/posts?q=見つからない')).json()).posts.length,0);
+assert.equal((await(await request('/api/posts?q=チーム')).json()).posts.length,1);
+assert.equal((await(await request('/api/posts?mode=mine',{user:'bob'})).json()).posts.length,0);
+f=new FormData();f.set('body','a'.repeat(501));assert.equal((await request('/api/posts',{method:'POST',body:f})).status,400);
+f=new FormData();f.set('body','bad');f.append('images',new File(['<svg></svg>'],'bad.png',{type:'image/png'}));assert.equal((await request('/api/posts',{method:'POST',body:f})).status,400);
+f=new FormData();f.set('body','写真');f.append('images',new File([fs.readFileSync('public/icon-192.png')],'photo.png',{type:'image/png'}));const imageCreated=await request('/api/posts',{method:'POST',body:f});assert.equal(imageCreated.status,201);const imageId=(await imageCreated.json()).id;
+const imagePost=(await(await request('/api/posts?mode=images')).json()).posts[0];const media='/media/'+imagePost.images[0];assert.equal((await request(media,{user:'bob'})).status,200);assert.equal((await request(media,{user:null})).status,401);
+assert.equal((await request('/api/posts/'+imageId,{method:'DELETE'})).status,200);assert.equal((await request(media)).status,404);assert.equal(env.files.size,0);
+assert.equal((await request('/api/posts/'+id,{method:'DELETE'})).status,200);assert.equal(env.sqlite.prepare('SELECT count(*) AS n FROM comments').get().n,0);assert.equal(env.sqlite.prepare('SELECT count(*) AS n FROM likes').get().n,0);
+const home=await request('/');assert.equal(home.status,200);assert.match(home.headers.get('Content-Security-Policy'),/script-src 'self'/);assert.equal((await request('/manifest.webmanifest')).status,200);assert.equal((await request('/sw.js')).status,200);
+env.sqlite.close();});

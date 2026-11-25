@@ -1,0 +1,12 @@
+.welcome.announcement-card{display:block;height:auto;min-height:130px;padding:24px 28px}
+.announcement-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.announcement-heading h2{font-size:14px;margin:0;color:#706080}
+.announcement-heading button{font-size:12px}
+.welcome #announcement-body{font-size:15px;line-height:1.9;color:#665872;white-space:pre-wrap;overflow-wrap:anywhere;margin:16px 0 0}
+#announcement-status{font-size:12px;color:#a0506d;margin:8px 0 0}
+#announcement-dialog textarea{resize:vertical;min-height:180px;font-size:14px}
+#announcement-error{color:#a0506d}
+.comment-heading{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.comment-heading small{margin-left:0}
+.delete-comment{margin-left:auto;border:1px solid #e8d9e2;border-radius:7px;padding:7px 10px;font-size:11px;color:#9d506b;min-height:32px}
+@media(max-width:600px){.welcome.announcement-card{padding:20px}.welcome #announcement-body{font-size:14px}}

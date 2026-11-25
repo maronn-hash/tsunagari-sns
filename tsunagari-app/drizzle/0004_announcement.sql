@@ -1,0 +1,1 @@
+CREATE TABLE announcement (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL DEFAULT '' CHECK(length(body)<=1000), updated INTEGER NOT NULL);

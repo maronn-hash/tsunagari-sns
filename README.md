@@ -2,6 +2,25 @@
 
 文字・画像・短い動画を投稿し、いいね・コメントで交流できるSNSです。PCのWebブラウザーとiPhoneから利用できます。ChatGPTのアカウントは不要です。
 
+
+## ソースコードと使い方
+
+コード・起動ファイル・テストは [`tsunagari-app`](tsunagari-app/) にあります。GitHubの「Code」→「Download ZIP」で一式をダウンロードできます。
+
+- Windowsでの固定URL設定：[FIXED_URL.md](tsunagari-app/FIXED_URL.md)
+- 初期登録と自宅PCでの起動：[HOME_SERVER.md](tsunagari-app/HOME_SERVER.md)
+- 開発・構成・設定：[アプリのREADME](tsunagari-app/README.md)
+
+開発時はNode.js 24以降で、次のコマンドを実行します。
+
+```bash
+cd tsunagari-app
+npm run build
+npm test
+```
+
+Windowsで設定済みの場合は、`tsunagari-app/start-sns.cmd` をダブルクリックして起動します。既存環境を更新するときはデータをバックアップし、`data-external-trial` と `.sns-private` を残してください。GitHubへの掲載だけではSNSサーバーは起動しません。
+
 ## システム構成
 
 Windows PCをサーバーとして使い、ngrokの固定URLを通じて社外からもアクセスする構成です。運用担当者がngrokの無料アカウントを作成し、割り当て済みのURLを一度設定します。独自ドメインの購入は不要です。
@@ -178,4 +197,5 @@ iPhoneではSafariから「ホーム画面に追加」し、そのアイコン�
 
 配布版は固定URLの設定・起動に対応しています。実際の公開は、運用担当者のngrokアカウントで設定して起動した後に行われます。自動テストでは再起動時のデータ維持と認証を確認していますが、実アカウントでの外部接続・iPhone動作は設定後に確認してください。
 
-このページはシステム概要の資料です。アプリのソースコードや実データは含みません。
+アプリのソースコードは [`tsunagari-app`](tsunagari-app/) に収録しています。アカウント・投稿データ・認証トークンは含みません。
+
