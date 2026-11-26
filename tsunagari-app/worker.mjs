@@ -1,4 +1,6 @@
 import {assets} from './assets.mjs';
+import {handleModeration} from './moderation-api.mjs';
+import {moderationLock,removeModeratedContent,flushMediaDeletions} from './moderation-core.mjs';
 import {identity,handleAuth,pushSession} from './auth.mjs';
 import {handleProfiles} from './profile-api.mjs';
 import {handleCalendar} from './calendar-api.mjs';
@@ -19,12 +21,13 @@ async function handle(req,env){
  if(Number(req.headers.get('content-length')||0)>21000000)fail('画像のサイズが大きすぎます。',413);
  const authResponse=await handleAuth(req,env);if(authResponse)return authResponse;
  const user=await identity(req,env);
+ const moderationResponse=await handleModeration(req,env,user);if(moderationResponse)return moderationResponse;
  const pushResponse=await handlePush(req,env,user,await pushSession(req,env));if(pushResponse)return pushResponse;
  if(p.startsWith('/media/')&&['GET','HEAD'].includes(req.method)){
   const key=p.slice(7);if(!/^[a-f0-9-]+\/\d+\.(jpg|png|webp|mp4)$/.test(key))fail('画像が見つかりません。',404);
-  const post=await db.prepare('SELECT images FROM posts WHERE id=?').bind(key.split('/')[0]).first();
+  const post=await db.prepare('SELECT images,hidden FROM posts WHERE id=?').bind(key.split('/')[0]).first();
   const profile=await db.prepare('SELECT id FROM profiles WHERE avatar_key=? OR header_key=? LIMIT 1').bind(key,key).first();
-  if((!post||!JSON.parse(post.images).includes(key))&&!profile)fail('画像が見つかりません。',404);
+  if((!post||(post.hidden&&user.role!=='admin')||!JSON.parse(post.images).includes(key))&&!profile)fail('画像が見つかりません。',404);
   const file=await env.BUCKET.get(key);if(!file)fail('画像が見つかりません。',404);
   if(key.endsWith('.mp4'))return serveVideo(file,req);
   return new Response(req.method==='HEAD'?null:file.body,{headers:{'Content-Type':file.httpMetadata?.contentType||'image/jpeg','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
@@ -35,7 +38,7 @@ async function handle(req,env){
  const announcementResponse=await handleAnnouncement(req,env,user);if(announcementResponse)return announcementResponse;
  if(p==='/api/posts'&&req.method==='GET'){
   const mode=url.searchParams.get('mode'),q=(url.searchParams.get('q')||'').trim().slice(0,100),cat=url.searchParams.get('category')||'',offset=Math.max(0,Math.min(100000,parseInt(url.searchParams.get('offset')||'0')||0));
-  const filters=[],params=[user.id];
+  const filters=['p.hidden=0'],params=[user.id];
   const linked=url.searchParams.get('post');if(linked){if(!/^[a-f0-9-]{36}$/.test(linked))fail('投稿が見つかりません。',404);filters.push('p.id=?');params.push(linked)}
   if(mode==='mine'){filters.push('p.author=?');params.push(user.id)}
   if(mode==='liked'){filters.push('EXISTS(SELECT 1 FROM likes l WHERE l.post_id=p.id AND l.user_id=?)');params.push(user.id)}
@@ -44,7 +47,7 @@ async function handle(req,env){
   if(categories.includes(cat)){filters.push('p.category=?');params.push(cat)}
   const where=filters.length?'WHERE '+filters.join(' AND '):'';
   const total=q?(await db.prepare('SELECT count(*) AS count FROM posts p JOIN profiles u ON u.id=p.author '+where).bind(...params.slice(1)).first()).count:null;
-  const sql=`SELECT p.*,u.name,u.avatar_key,(SELECT count(*) FROM likes l WHERE l.post_id=p.id) AS like_count,(SELECT count(*) FROM comments c WHERE c.post_id=p.id) AS comment_count,EXISTS(SELECT 1 FROM likes l WHERE l.post_id=p.id AND l.user_id=?) AS liked FROM posts p JOIN profiles u ON u.id=p.author ${filters.length?'WHERE '+filters.join(' AND '):''} ORDER BY p.created DESC,p.id DESC LIMIT 21 OFFSET ?`;
+  const sql=`SELECT p.*,u.name,u.avatar_key,(SELECT count(*) FROM likes l WHERE l.post_id=p.id) AS like_count,(SELECT count(*) FROM comments c WHERE c.post_id=p.id AND c.hidden=0) AS comment_count,EXISTS(SELECT 1 FROM likes l WHERE l.post_id=p.id AND l.user_id=?) AS liked FROM posts p JOIN profiles u ON u.id=p.author ${filters.length?'WHERE '+filters.join(' AND '):''} ORDER BY p.created DESC,p.id DESC LIMIT 21 OFFSET ?`;
   const result=await db.prepare(sql).bind(...params,offset).all(),rows=result.results;return json({posts:rows.slice(0,20).map(r=>({...r,images:JSON.parse(r.images),mine:r.author===user.id})),more:rows.length>20,total});
  }
  if(p==='/api/posts'&&req.method==='POST'){
@@ -61,18 +64,17 @@ async function handle(req,env){
   const comment=await db.prepare('SELECT author FROM comments WHERE id=? AND post_id=?').bind(commentMatch[2],commentMatch[1]).first();
   if(!comment)fail('コメントが見つかりません。',404);
   if(comment.author!==user.id)fail('自分のコメントだけ削除できます。',403);
-  await db.prepare('DELETE FROM comments WHERE id=? AND post_id=? AND author=?').bind(commentMatch[2],commentMatch[1],user.id).run();
+  await moderationLock(env,()=>removeModeratedContent(env,{kind:'comment',id:commentMatch[2],actor:user,reason:'投稿者による削除',action:'author_delete'}));
   return json({ok:true});
  }
  const match=p.match(/^\/api\/posts\/([a-f0-9-]+)(?:\/(likes|comments))?$/);if(!match)fail('見つかりません。',404);
- const [,id,action]=match,post=await db.prepare('SELECT * FROM posts WHERE id=?').bind(id).first();if(!post)fail('投稿が見つかりません。',404);
+ const [,id,action]=match,post=await db.prepare('SELECT * FROM posts WHERE id=?').bind(id).first();if(!post||(post.hidden&&!(req.method==='DELETE'&&!action&&post.author===user.id)))fail('投稿が見つかりません。',404);
  if(!action&&req.method==='DELETE'){
   if(post.author!==user.id)fail('自分の投稿だけ削除できます。',403);
-  await db.batch([db.prepare('DELETE FROM comments WHERE post_id=?').bind(id),db.prepare('DELETE FROM likes WHERE post_id=?').bind(id),db.prepare('DELETE FROM posts WHERE id=?').bind(id)]);
-  await Promise.allSettled(JSON.parse(post.images).map(k=>env.BUCKET.delete(k)));return json({ok:true});
+  await moderationLock(env,async()=>{await removeModeratedContent(env,{kind:'post',id,actor:user,reason:'投稿者による削除',action:'author_delete'});await flushMediaDeletions(env)});return json({ok:true});
  }
  if(action==='likes'&&['PUT','DELETE'].includes(req.method)){await db.prepare(req.method==='PUT'?'INSERT OR IGNORE INTO likes (post_id,user_id) SELECT id,? FROM posts WHERE id=?':'DELETE FROM likes WHERE user_id=? AND post_id=?').bind(user.id,id).run();return json({ok:true})}
- if(action==='comments'&&req.method==='GET'){const r=await db.prepare('SELECT c.id,c.body,c.created,c.author,u.name,u.avatar_key FROM comments c JOIN profiles u ON u.id=c.author WHERE post_id=? ORDER BY c.created ASC LIMIT 200').bind(id).all();return json(r.results.map(c=>({...c,mine:c.author===user.id})))}
- if(action==='comments'&&req.method==='POST'){const b=await req.json(),body=text(b.body,300);if(!body)fail('コメントを入力してください。');await db.prepare('INSERT INTO comments (id,post_id,author,body,created) SELECT ?,id,?,?,? FROM posts WHERE id=?').bind(crypto.randomUUID(),user.id,body,Date.now(),id).run();if(post.author!==user.id)await notifyMembers(env,{onlyUser:post.author,name:user.name,body,kind:'reply',postId:id});return json({ok:true},201)}
+ if(action==='comments'&&req.method==='GET'){const r=await db.prepare('SELECT c.id,c.body,c.created,c.author,u.name,u.avatar_key FROM comments c JOIN profiles u ON u.id=c.author WHERE post_id=? AND c.hidden=0 ORDER BY c.created ASC LIMIT 200').bind(id).all();return json(r.results.map(c=>({...c,mine:c.author===user.id})))}
+ if(action==='comments'&&req.method==='POST'){const b=await req.json(),body=text(b.body,300);if(!body)fail('コメントを入力してください。');const commentId=crypto.randomUUID();const inserted=await db.prepare('INSERT INTO comments (id,post_id,author,body,created) SELECT ?,id,?,?,? FROM posts WHERE id=? AND hidden=0').bind(commentId,user.id,body,Date.now(),id).run();if(!(inserted.changes??inserted.meta?.changes))fail('投稿が見つかりません。',404);if(post.author!==user.id)await notifyMembers(env,{onlyUser:post.author,name:user.name,body,kind:'reply',postId:id,commentId});return json({ok:true},201)}
  return json({error:'対応していない操作です。'},405);
 }

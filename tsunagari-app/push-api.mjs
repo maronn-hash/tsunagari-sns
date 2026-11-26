@@ -4,13 +4,13 @@ export function validPushEndpoint(value){
  if(typeof value!=='string'||value.length>2048)return false;
  try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&!u.port&&!u.hash&&u.pathname!=='/'&&(u.hostname==='web.push.apple.com'||u.hostname==='fcm.googleapis.com'||u.hostname==='updates.push.services.mozilla.com'||u.hostname.endsWith('.push.services.mozilla.com'))}catch{return false}
 }
-export function pushPreview({name='',body='',images=[],kind='post',postId=''}={}){
+export function pushPreview({name='',body='',images=[],kind='post',postId='',commentId=''}={}){
  const clip=(value,max)=>{const chars=Array.from(String(value).replace(/\s+/g,' ').trim());return chars.length>max?chars.slice(0,max).join('')+'…':chars.join('')};
  const author=clip(name,40)||'メンバー';
  const title=kind==='reply'?`${author}さんが返信しました`:kind==='announcement'?`${author}さんが固定コメントを更新`:kind==='test'?`${author}さんのテスト通知`:`${author}さんが投稿しました`;
  const attachment=images.some(k=>k.endsWith('.mp4'))?'🎥 動画':images.length?`📷 画像${images.length}枚`:'';
  const preview=clip(body,100);
- return {title,body:[preview,attachment].filter(Boolean).join(' '),url:/^[a-f0-9-]{36}$/.test(postId)?'/?post='+postId:'/',version:1};
+ return {title,body:[preview,attachment].filter(Boolean).join(' '),url:/^[a-f0-9-]{36}$/.test(postId)?'/?post='+postId:'/',version:1,...(/^[a-f0-9-]{36}$/.test(commentId)?{commentId}:{})};
 }
 async function readPushKeys(keys){
  if(keys===undefined)return {p256dh:'',auth:''}; // Earlier clients retain their generic notifications.

@@ -68,6 +68,13 @@ export function createPushService({env,directory,origin,send=fetch,intervalMs=20
    // Recheck sessions immediately before sending (logout/disable may occur while queued).
    const live=await db.prepare('SELECT p.endpoint,p.p256dh,p.auth FROM push_subscriptions p JOIN accounts a ON a.user_id=p.user_id JOIN sessions s ON s.token_hash=p.session_hash WHERE p.endpoint=? AND a.enabled=1 AND s.expires>?').bind(job.endpoint,Date.now()).first();
    if(!live){await db.prepare('DELETE FROM push_jobs WHERE id=?').bind(job.id).run();continue}
+   // Recheck visibility immediately before sending; hidden/deleted content must not leak via queued notifications.
+   if(job.payload){let payload;try{payload=JSON.parse(job.payload)}catch{payload={}}
+    const postId=typeof payload.url==='string'?payload.url.match(/^\/\?post=([a-f0-9-]{36})$/)?.[1]:null;
+    const visible=!postId||await db.prepare('SELECT id FROM posts WHERE id=? AND hidden=0').bind(postId).first();
+    const commentVisible=!payload.commentId||await db.prepare('SELECT id FROM comments WHERE id=? AND post_id=? AND hidden=0').bind(payload.commentId,postId||'').first();
+    if(!visible||!commentVisible){await db.prepare('DELETE FROM push_jobs WHERE id=?').bind(job.id).run();continue}
+   }
    const status=await sendNotification(job.endpoint,live,job.payload);
    if(closing)return;
    if(status===404||status===410)await db.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(job.endpoint).run();

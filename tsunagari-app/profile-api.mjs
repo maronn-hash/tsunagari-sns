@@ -16,7 +16,7 @@ export async function handleProfiles(req,env,user){
  const db=env.DB;
  if(req.method==='GET'){
   const id=match?match[1]:user.id;
-  const profile=await db.prepare('SELECT p.id,p.name,p.bio,p.location,p.avatar_key,p.header_key,a.username,(SELECT count(*) FROM posts WHERE author=p.id) AS post_count FROM profiles p JOIN accounts a ON a.user_id=p.id WHERE p.id=?').bind(id).first();
+  const profile=await db.prepare('SELECT p.id,p.name,p.bio,p.location,p.avatar_key,p.header_key,a.username,(SELECT count(*) FROM posts WHERE author=p.id AND hidden=0) AS post_count FROM profiles p JOIN accounts a ON a.user_id=p.id WHERE p.id=?').bind(id).first();
   if(!profile)profileError('プロフィールが見つかりません。',404);
   return profileJSON({...profile,...(!match?{role:user.role}:{})});
  }
