@@ -22,6 +22,7 @@ async function issueSession(env,userId){const token=randomToken();await env.DB.b
 export async function pushSession(req,env){return digest(tokenFrom(req,env)||'')}
 export async function identity(req,env){const token=tokenFrom(req,env);if(!token)error('社内アカウントでログインしてください。',401);const user=await env.DB.prepare('SELECT a.user_id AS id,a.username,a.role,p.name FROM sessions s JOIN accounts a ON a.user_id=s.user_id JOIN profiles p ON p.id=a.user_id WHERE s.token_hash=? AND s.expires>? AND a.enabled=1').bind(digest(token),Date.now()).first();if(!user)error('ログインの有効期限が切れました。もう一度ログインしてください。',401);return user}
 export async function handleAuth(req,env){const path=new URL(req.url).pathname,db=env.DB;
+ if(path==='/api/admin/operations'||path.startsWith('/api/admin/operations/'))return null;
  if(path==='/api/admin/moderation'||path.startsWith('/api/admin/moderation/'))return null;
  if(!path.startsWith('/api/auth/')&&!path.startsWith('/api/admin/'))return null;
  if(path==='/api/auth/status'&&req.method==='GET'){const row=await db.prepare('SELECT count(*) AS count FROM accounts').first();return response({setupRequired:row.count===0,setupConfigured:typeof env.ADMIN_SETUP_TOKEN==='string'&&env.ADMIN_SETUP_TOKEN.length>=32})}
@@ -59,3 +60,4 @@ export async function handleAuth(req,env){const path=new URL(req.url).pathname,d
  }
  return response({error:'対応していない操作です。'},405);
 }
+

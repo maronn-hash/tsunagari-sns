@@ -1,3 +1,4 @@
+import {handleOperations,observeOperation} from './operations-api.mjs';
 import {assets} from './assets.mjs';
 import {handleModeration} from './moderation-api.mjs';
 import {moderationLock,removeModeratedContent,flushMediaDeletions} from './moderation-core.mjs';
@@ -11,7 +12,11 @@ const categories=['日々のこと','仕事のヒント','お知らせ','あり�
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status})};
 const text=(value,max)=>{if(typeof value!=='string'||value.trim().length>max)fail('入力内容が長すぎるか、形式が正しくありません。');return value.trim()};
-export default {async fetch(req,env){try{return await handle(req,env)}catch(e){if(!e.status)console.error('Request failed',e.message);return json({error:e.status?e.message:'処理できませんでした。時間をおいて、もう一度お試しください。'},e.status||500)}}};
+export default {async fetch(req,env){const started=Date.now();let result,actor=null;
+ if(new URL(req.url).pathname.startsWith('/api/')&&!['GET','HEAD'].includes(req.method))try{actor=await identity(req,env)}catch{}
+ try{result=await handle(req,env)}catch(e){if(!e.status)console.error('Request failed');result=json({error:e.status?e.message:'処理できませんでした。時間をおいて、もう一度お試しください。'},e.status||500)}
+ if(!actor&&result.status<400&&result.headers.has('set-cookie'))try{const headers=new Headers(req.headers);headers.set('cookie',result.headers.get('set-cookie').split(';')[0]);actor=await identity(new Request(req.url,{headers}),env)}catch{}
+ await observeOperation(req,env,actor,result,Date.now()-started);return result}};
 async function handle(req,env){
  const url=new URL(req.url),p=url.pathname;
  if(assets[p]&&req.method==='GET'){const a=assets[p];return new Response(a.base64?Uint8Array.from(atob(a.body),c=>c.charCodeAt(0)):a.body,{headers:{'Content-Type':a.type,'Cache-Control':p==='/sw.js'?'no-cache':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"}})}
@@ -21,6 +26,7 @@ async function handle(req,env){
  if(Number(req.headers.get('content-length')||0)>21000000)fail('画像のサイズが大きすぎます。',413);
  const authResponse=await handleAuth(req,env);if(authResponse)return authResponse;
  const user=await identity(req,env);
+ const operationsResponse=await handleOperations(req,env,user);if(operationsResponse)return operationsResponse;
  const moderationResponse=await handleModeration(req,env,user);if(moderationResponse)return moderationResponse;
  const pushResponse=await handlePush(req,env,user,await pushSession(req,env));if(pushResponse)return pushResponse;
  if(p.startsWith('/media/')&&['GET','HEAD'].includes(req.method)){
@@ -78,3 +84,4 @@ async function handle(req,env){
  if(action==='comments'&&req.method==='POST'){const b=await req.json(),body=text(b.body,300);if(!body)fail('コメントを入力してください。');const commentId=crypto.randomUUID();const inserted=await db.prepare('INSERT INTO comments (id,post_id,author,body,created) SELECT ?,id,?,?,? FROM posts WHERE id=? AND hidden=0').bind(commentId,user.id,body,Date.now(),id).run();if(!(inserted.changes??inserted.meta?.changes))fail('投稿が見つかりません。',404);if(post.author!==user.id)await notifyMembers(env,{onlyUser:post.author,name:user.name,body,kind:'reply',postId:id,commentId});return json({ok:true},201)}
  return json({error:'対応していない操作です。'},405);
 }
+

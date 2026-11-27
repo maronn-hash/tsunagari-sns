@@ -75,14 +75,15 @@ export function createPushService({env,directory,origin,send=fetch,intervalMs=20
     const commentVisible=!payload.commentId||await db.prepare('SELECT id FROM comments WHERE id=? AND post_id=? AND hidden=0').bind(payload.commentId,postId||'').first();
     if(!visible||!commentVisible){await db.prepare('DELETE FROM push_jobs WHERE id=?').bind(job.id).run();continue}
    }
-   const status=await sendNotification(job.endpoint,live,job.payload);
+   const status=await sendNotification(job.endpoint,live,job.payload);if(!(status>=200&&status<300)&&status!==404&&status!==410)await env.OPS?.event('push_failed');
    if(closing)return;
    if(status===404||status===410)await db.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(job.endpoint).run();
    if((status>=200&&status<300)||(status>=400&&status<500&&status!==429)||job.attempts>=2)await db.prepare('DELETE FROM push_jobs WHERE id=?').bind(job.id).run();
    else await db.prepare('UPDATE push_jobs SET attempts=attempts+1,available=? WHERE id=?').bind(Date.now()+15000*(job.attempts+1),job.id).run();
   }
  }
- function drain(){if(closing)return Promise.resolve();if(running)return running;running=deliver().catch(()=>console.error('Notification delivery could not complete.')).finally(()=>{running=null});return running}
+ function drain(){if(closing)return Promise.resolve();if(running)return running;running=deliver().catch(()=>(console.error('Notification delivery could not complete.'),env.OPS?.event('push_failed'))).finally(()=>{running=null});return running}
  const timer=setInterval(()=>void drain(),intervalMs);timer.unref();
  return {publicKey:key.publicKey,enqueue,test,drain,async close(){closing=true;clearInterval(timer);controller.abort();if(running)await running}};
 }
+

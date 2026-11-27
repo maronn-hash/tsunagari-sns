@@ -5,5 +5,5 @@ export function createStorage(dataDirectory){const root=path.resolve(dataDirecto
  const DB={prepare(sql){let args=[];return{bind(...values){args=values;return this},async first(){return sqlite.prepare(sql).get(...args)||null},async all(){return{results:sqlite.prepare(sql).all(...args)}},async run(){return this.runSync()},runSync(){return sqlite.prepare(sql).run(...args)}}},async batch(list){sqlite.exec('BEGIN');try{const result=list.map(s=>s.runSync());sqlite.exec('COMMIT');return result}catch(e){sqlite.exec('ROLLBACK');throw e}}};
  const file=key=>{if(!/^[a-f0-9-]+\/\d+\.(jpg|png|webp|mp4)$/.test(key))throw Error('Invalid media key');return path.join(mediaRoot,...key.split('/'))};
  const BUCKET={async put(key,bytes){const dest=file(key);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,bytes)},async get(key){const dest=file(key);if(!fs.existsSync(dest))return null;return{body:fs.readFileSync(dest),httpMetadata:{contentType:key.endsWith('.mp4')?'video/mp4':key.endsWith('.png')?'image/png':key.endsWith('.webp')?'image/webp':'image/jpeg'}}},async delete(key){const dest=file(key);if(fs.existsSync(dest))fs.unlinkSync(dest)}};
- return {DB,BUCKET,close:()=>sqlite.close()};
+ return {DB,BUCKET,snapshot(destination){sqlite.exec("VACUUM INTO '"+destination.replaceAll("'","''")+"'")},close:()=>sqlite.close()};
 }

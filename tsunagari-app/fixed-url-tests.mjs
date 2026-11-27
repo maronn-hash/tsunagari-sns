@@ -35,7 +35,7 @@ test('fixed URL config persists, rejects unsafe URLs, and isolates secrets from 
 test('fixed tunnel uses existing data and login sessions across restarts; errors close owned resources',async()=>{
  const root=temporary(),directory=path.join(root,'data-external-trial');let runtime;
  try{
-  for(const file of ['server.mjs','server-config.mjs','node-storage.mjs','node-push.mjs','node-moderation.mjs','moderation-core.mjs','push-encryption.mjs','push-api.mjs','drizzle','dist'])fs.cpSync(file,path.join(root,file),{recursive:true});
+  for(const file of ['server.mjs','server-config.mjs','node-storage.mjs','node-push.mjs','node-operations.mjs','backup-files.mjs','node-moderation.mjs','moderation-core.mjs','push-encryption.mjs','push-api.mjs','drizzle','dist'])fs.cpSync(file,path.join(root,file),{recursive:true});
   const storage=createStorage(directory);storage.ADMIN_SETUP_TOKEN='test-fixed-bootstrap-code-over-32-characters';
   const registration=await worker.fetch(new Request(config.origin+'/api/auth/register',{method:'POST',headers:{origin:config.origin,'Content-Type':'application/json'},body:JSON.stringify({username:'admin',name:'Test',password:'test-password-long-enough',code:storage.ADMIN_SETUP_TOKEN})}),storage);
   assert.equal(registration.status,201);const cookie=registration.headers.get('set-cookie').split(';')[0];storage.close();
@@ -72,3 +72,4 @@ test('fixed tunnel uses existing data and login sessions across restarts; errors
   await assert.rejects(runtime.ready,/登録済み/);assert.equal(fs.existsSync(path.join(root,'missing')),false);
  }finally{runtime?.close();await delay(300);remove(root)}
 });
+

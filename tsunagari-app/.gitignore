@@ -16,3 +16,8 @@ node_modules/
 *.log
 push-keys.json
 push-authorization.json
+
+*-backups/
+backups/
+restored*/
+.partial-*/
