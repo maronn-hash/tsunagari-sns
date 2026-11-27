@@ -16,7 +16,7 @@ async function loadOperations(){if(me?.role!=='admin')return;const v=++opsVersio
  }
  }catch(e){if(v===opsVersion&&me?.id===owner){$('#ops-error').textContent=e.message;$('#ops-content').textContent=''}}
 }
-$('#open-operations').onclick=()=>{if(me?.role!=='admin')return;$('#profile-view-dialog').close();opsTab='status';opsOffset=0;$('#operations-dialog').showModal();loadOperations()};
+$('#open-operations').onclick=()=>{if(me?.role!=='admin')return;$('#profile-view-dialog')?.close();opsTab='status';opsOffset=0;$('#operations-dialog').showModal();loadOperations()};
 $$('[data-ops-tab]').forEach(b=>b.onclick=()=>{opsTab=b.dataset.opsTab;opsOffset=0;loadOperations()});$('#ops-refresh').onclick=()=>loadOperations();$('#ops-prev').onclick=()=>{opsOffset=Math.max(0,opsOffset-25);loadOperations()};$('#ops-next').onclick=()=>{opsOffset+=25;loadOperations()};
 async function opsChange(url,options){if(opsBusy||me?.role!=='admin')return;const owner=me.id;opsBusy=true;try{await api(url,options);if(me?.id===owner){toast('受け付けました。');await loadOperations()}}catch(e){if(me?.id===owner)$('#ops-error').textContent=e.message}finally{opsBusy=false;if(me?.id===owner&&$('#operations-dialog').open)loadOperations()}}
 $('#ops-content').addEventListener('click',e=>{if(e.target.closest('#ops-backup-now'))opsChange('/api/admin/operations/backup',{method:'POST'})});

@@ -15,6 +15,7 @@ async function loadAnnouncement(){
 }
 $('#announcement-edit').onclick=()=>{
  if(me?.role!=='admin'||!announcementLoaded||announcementSaving)return;
+ if(typeof openAdminPage==='function'){openAdminPage('announcement');return}
  $('#announcement-text').value=announcementBody;$('#announcement-error').textContent='';$('#announcement-dialog').showModal();$('#announcement-text').focus();
 };
 $('#announcement-form').onsubmit=async e=>{

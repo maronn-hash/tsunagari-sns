@@ -28,7 +28,8 @@ $('#calendar-today').onclick=()=>{calendarSelected=calendarToday();calendarMonth
 $('#calendar-reload').onclick=loadCalendar;
 $('#calendar-grid').onclick=e=>{const b=e.target.closest('[data-calendar-date]');if(b){calendarSelected=b.dataset.calendarDate;renderCalendar()}};
 function editCalendarEvent(event=null){
- if(calendarSaving||!me||(!event&&me.role!=='admin'))return;calendarEditId=event?.id||'';const readonly=event&&!event.mine;
+ if(calendarSaving||!me||(!event&&me.role!=='admin'))return;
+ if(me.role==='admin'&&typeof openAdminPage==='function'){openAdminPage('calendar');return}calendarEditId=event?.id||'';const readonly=event&&!event.mine;
  $('#calendar-editor-title').textContent=event?(readonly?'予定の詳細':'予定を編集'):'予定を追加';
  $('#event-title').value=event?.title||'';$('#event-date').value=event?.event_date||calendarSelected;$('#event-start').value=event?.start_time||'';$('#event-end').value=event?.end_time||'';$('#event-notes').value=event?.notes||'';
  $('#event-fields').disabled=!!readonly;$('#event-owner').textContent=event?'登録者：'+event.name:'メンバー全員のカレンダーに表示されます。';$('#event-save').hidden=!!readonly;$('#event-save').disabled=false;$('#event-delete').hidden=!event||!!readonly;$('#event-delete').disabled=false;$('#event-confirm-delete').disabled=false;$('#event-delete-check').hidden=true;$('#event-error').textContent='';$('#calendar-editor').showModal()

@@ -131,5 +131,5 @@ test('moderation UI escapes user content, guards admin actions and ignores respo
  context.me={id:'admin',role:'admin'};assert.match(run("moderationLinks('post','id')"),/data-manage/);
  context.api=async()=>({items:[{id:'x',kind:'post',name:'<img onerror=x>',body:'<script>alert(1)</script>',created:1,images:[]}],more:false});await run("openModeration({kind:'post',id:'x'})");assert.match($('#moderation-list').innerHTML,/&lt;script&gt;/);assert.doesNotMatch($('#moderation-list').innerHTML,/<script>/);
  let resolve;context.api=()=>new Promise(r=>resolve=r);const pending=run('loadModeration()');context.me=null;run('resetModeration()');resolve({items:[{body:'private'}]});await pending;assert.equal($('#moderation-list').textContent,'');
- const html=fs.readFileSync('public/index.html','utf8'),script=fs.readFileSync('public/moderation.js','utf8');for(const [,id] of script.matchAll(/\$\('#([^']+)'\)/g))assert.ok(html.includes(`id="${id}"`),'missing element '+id);
+ const html=fs.readFileSync('public/index.html','utf8')+fs.readFileSync('public/admin.html','utf8'),script=fs.readFileSync('public/moderation.js','utf8');for(const [,id] of script.matchAll(/\$\('#([^']+)'\)/g))assert.ok(html.includes(`id="${id}"`),'missing element '+id);
 });
