@@ -18,7 +18,8 @@ export async function handleProfiles(req,env,user){
   const id=match?match[1]:user.id;
   const profile=await db.prepare('SELECT p.id,p.name,p.bio,p.location,p.avatar_key,p.header_key,a.username,(SELECT count(*) FROM posts WHERE author=p.id AND hidden=0) AS post_count FROM profiles p JOIN accounts a ON a.user_id=p.id WHERE p.id=?').bind(id).first();
   if(!profile)profileError('プロフィールが見つかりません。',404);
-  return profileJSON({...profile,...(!match?{role:user.role}:{})});
+  const {username,...publicProfile}=profile;
+  return profileJSON(match?publicProfile:{...profile,role:user.role});
  }
  if(p!=='/api/me'||req.method!=='PATCH')return profileJSON({error:'対応していない操作です。'},405);
  const current=await db.prepare('SELECT * FROM profiles WHERE id=?').bind(user.id).first();

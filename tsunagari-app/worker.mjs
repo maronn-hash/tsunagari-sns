@@ -45,6 +45,7 @@ async function handle(req,env){
  if(p==='/api/posts'&&req.method==='GET'){
   const mode=url.searchParams.get('mode'),q=(url.searchParams.get('q')||'').trim().slice(0,100),cat=url.searchParams.get('category')||'',offset=Math.max(0,Math.min(100000,parseInt(url.searchParams.get('offset')||'0')||0));
   const filters=['p.hidden=0'],params=[user.id];
+  const author=url.searchParams.get('author')||'';if(author){if(!/^[a-f0-9-]{36}$/.test(author))fail('投稿者が正しくありません。');filters.push('p.author=?');params.push(author)}
   const linked=url.searchParams.get('post');if(linked){if(!/^[a-f0-9-]{36}$/.test(linked))fail('投稿が見つかりません。',404);filters.push('p.id=?');params.push(linked)}
   if(mode==='mine'){filters.push('p.author=?');params.push(user.id)}
   if(mode==='liked'){filters.push('EXISTS(SELECT 1 FROM likes l WHERE l.post_id=p.id AND l.user_id=?)');params.push(user.id)}
@@ -52,7 +53,7 @@ async function handle(req,env){
   if(q){filters.push("instr(lower(p.body),lower(?))>0");params.push(q)}
   if(categories.includes(cat)){filters.push('p.category=?');params.push(cat)}
   const where=filters.length?'WHERE '+filters.join(' AND '):'';
-  const total=q?(await db.prepare('SELECT count(*) AS count FROM posts p JOIN profiles u ON u.id=p.author '+where).bind(...params.slice(1)).first()).count:null;
+  const total=(q||author)?(await db.prepare('SELECT count(*) AS count FROM posts p JOIN profiles u ON u.id=p.author '+where).bind(...params.slice(1)).first()).count:null;
   const sql=`SELECT p.*,u.name,u.avatar_key,(SELECT count(*) FROM likes l WHERE l.post_id=p.id) AS like_count,(SELECT count(*) FROM comments c WHERE c.post_id=p.id AND c.hidden=0) AS comment_count,EXISTS(SELECT 1 FROM likes l WHERE l.post_id=p.id AND l.user_id=?) AS liked FROM posts p JOIN profiles u ON u.id=p.author ${filters.length?'WHERE '+filters.join(' AND '):''} ORDER BY p.created DESC,p.id DESC LIMIT 21 OFFSET ?`;
   const result=await db.prepare(sql).bind(...params,offset).all(),rows=result.results;return json({posts:rows.slice(0,20).map(r=>({...r,images:JSON.parse(r.images),mine:r.author===user.id})),more:rows.length>20,total});
  }

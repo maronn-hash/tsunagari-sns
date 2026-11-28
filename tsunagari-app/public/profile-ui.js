@@ -10,7 +10,7 @@ function clearProfileDraft(){
  $('#profile-form').reset();
  $('#profile-header-preview').removeAttribute('src');$('#profile-avatar-preview').replaceChildren();
 }
-function resetProfileEditor(){clearProfileDraft();profileViewVersion++;$('#profile-view-content').replaceChildren();$('#profile-account-actions').hidden=true;}
+function resetProfileEditor(){resetProfilePosts();clearProfileDraft();profileViewVersion++;$('#profile-view-content').replaceChildren();$('#profile-account-actions').hidden=true;}
 function profilePreview(kind){
  const image=profileImages[kind],key=image.remove?'':me?.[kind+'_key'],url=image.url||profileImageURL(key);
  if(kind==='header'){const img=$('#profile-header-preview');img.hidden=!url;if(url)img.src=url;else img.removeAttribute('src')}
@@ -73,15 +73,41 @@ $('#profile-form').onsubmit=async e=>{
  finally{profileSaving=false;profileSaveState()}
 };
 async function openProfileView(id){
- if(!me)return;const version=++profileViewVersion;
+ if(!me)return;const version=++profileViewVersion,owner=me.id;resetProfilePosts();$('#profile-view-dialog').scrollTop=0;
  $('#comments-dialog').close();$('#profile-account-actions').hidden=true;$('#profile-view-content').textContent='プロフィールを読み込んでいます…';
  if(!$('#profile-view-dialog').open)$('#profile-view-dialog').showModal();
  try{
-  const p=await api('/api/profiles/'+encodeURIComponent(id));if(version!==profileViewVersion||!me)return;
+  const p=await api('/api/profiles/'+encodeURIComponent(id));if(version!==profileViewVersion||me?.id!==owner)return;
   const header=profileImageURL(p.header_key),own=p.id===me.id;
-  $('#profile-view-content').innerHTML=`<div class="profile-cover">${header?`<img src="${esc(header)}" alt="${esc(p.name)}のヘッダー画像">`:''}</div><div class="profile-detail"><div class="profile-identity-row"><span class="avatar profile-large-avatar">${avatarMarkup(p.name,p.avatar_key)}</span>${own?'<button class="secondary" id="edit-profile">プロフィールを編集</button>':''}</div><h3>${esc(p.name)}</h3><div class="profile-handle">@${esc(p.username)}</div>${p.bio?`<p class="profile-bio">${esc(p.bio)}</p>`:'<p class="profile-bio profile-muted">自己紹介はまだありません。</p>'}<div class="profile-details-meta">${p.location?`<span>${icon('home')}${esc(p.location)}</span>`:''}</div><div class="profile-post-count"><strong>${p.post_count}</strong> 投稿</div></div>`;
+  $('#profile-view-content').innerHTML=`<div class="profile-cover">${header?`<img src="${esc(header)}" alt="${esc(p.name)}のヘッダー画像">`:''}</div><div class="profile-detail"><div class="profile-identity-row"><span class="avatar profile-large-avatar">${avatarMarkup(p.name,p.avatar_key)}</span>${own?'<button class="secondary" id="edit-profile">プロフィールを編集</button>':''}</div><h3>${esc(p.name)}</h3>${p.bio?`<p class="profile-bio">${esc(p.bio)}</p>`:'<p class="profile-bio profile-muted">自己紹介はまだありません。</p>'}<div class="profile-details-meta">${p.location?`<span>${icon('home')}${esc(p.location)}</span>`:''}</div><div class="profile-post-count"><strong id="profile-post-total">${p.post_count}</strong> 投稿</div></div>`;
   $('#profile-account-actions').hidden=!own;$('#edit-profile')?.addEventListener('click',showProfile);
- }catch(e){if(version===profileViewVersion)$('#profile-view-content').textContent=e.message}
+  profilePostsAuthor=p.id;$('#profile-posts-section').hidden=false;await loadProfilePosts();
+ }catch(e){if(version===profileViewVersion&&me?.id===owner)$('#profile-view-content').textContent=e.message}
 }
 ['#profile-top','#profile-side','#mobile-profile'].forEach(s=>$(s).onclick=()=>openProfileView(me?.id));
 $('#comment-list').addEventListener('click',e=>{const target=e.target.closest('[data-profile]');if(target)openProfileView(target.dataset.profile)});
+let profilePostsAuthor='',profilePosts=[],profilePostsMore=false,profilePostsLoading=false,profilePostsRequest=0,profilePostsOffset=0;
+function resetProfilePosts(){profilePostsRequest++;profilePostsAuthor='';profilePosts=[];profilePostsMore=false;profilePostsLoading=false;profilePostsOffset=0;$('#profile-posts-section').hidden=true;$('#profile-posts-list').replaceChildren();$('#profile-posts-status').textContent='';$('#profile-posts-more').hidden=true;$('#profile-posts-refresh').disabled=false}
+function profilePostMarkup(post){
+ const href='/?post='+encodeURIComponent(post.id),keys=(post.images||[]).filter(key=>typeof key==='string'&&/^[a-f0-9-]+\/\d+\.(jpg|png|webp|mp4)$/.test(key));
+ return `<article class="profile-history-post"><div class="profile-history-meta"><time datetime="${esc(new Date(post.created).toISOString())}">${time(post.created)}</time><span>${esc(post.category)}</span></div>${post.body?`<p class="profile-history-body">${esc(post.body)}</p>`:''}${keys.length?`<div class="profile-history-media">${keys.map((key,i)=>key.endsWith('.mp4')?`<video controls playsinline preload="none" src="/media/${esc(key)}" aria-label="投稿動画"></video>`:`<a href="${href}" aria-label="画像 ${i+1}の投稿を開く"><img src="/media/${esc(key)}" alt="投稿画像 ${i+1}" loading="lazy"></a>`).join('')}</div>`:''}<div class="profile-history-bottom"><span>いいね ${Number(post.like_count)||0} · コメント ${Number(post.comment_count)||0}</span><a href="${href}" class="secondary">投稿を開く</a></div></article>`;
+}
+async function loadProfilePosts(append=false){
+ if(!me||!profilePostsAuthor||(append&&profilePostsLoading))return;
+ const owner=me.id,author=profilePostsAuthor,version=++profilePostsRequest;profilePostsLoading=true;
+ $('#profile-posts-refresh').disabled=true;$('#profile-posts-more').disabled=true;$('#profile-posts-status').textContent='投稿を読み込んでいます…';
+ if(!append){profilePosts=[];profilePostsOffset=0;profilePostsMore=false;$('#profile-posts-list').replaceChildren();$('#profile-posts-more').hidden=true}
+ try{
+  const data=await api('/api/posts?'+new URLSearchParams({author,offset:append?profilePostsOffset:0}));
+  if(version!==profilePostsRequest||owner!==me?.id||author!==profilePostsAuthor)return;
+  profilePostsOffset=(append?profilePostsOffset:0)+data.posts.length;
+  const seen=new Set(append?profilePosts.map(p=>p.id):[]),next=data.posts.filter(p=>{if(seen.has(p.id))return false;seen.add(p.id);return true});profilePosts=append?[...profilePosts,...next]:next;profilePostsMore=data.more;
+  $('#profile-posts-list').innerHTML=profilePosts.map(profilePostMarkup).join('');$('#profile-posts-status').textContent=profilePosts.length?`${profilePosts.length}件を表示しています。新しい投稿から順に並びます。`:'表示できる投稿はまだありません。';
+  if(Number.isInteger(data.total)&&$('#profile-post-total'))$('#profile-post-total').textContent=String(data.total);
+  $('#profile-posts-more').hidden=!profilePostsMore;
+ }catch(e){if(version===profilePostsRequest&&owner===me?.id&&author===profilePostsAuthor)$('#profile-posts-status').textContent=e.message+' 「更新」または「もっと見る」から再試行してください。'}
+ finally{if(version===profilePostsRequest){profilePostsLoading=false;$('#profile-posts-refresh').disabled=false;$('#profile-posts-more').disabled=false}}
+}
+$('#profile-posts-more').onclick=()=>{if(profilePostsMore)loadProfilePosts(true)};
+$('#profile-posts-refresh').onclick=()=>loadProfilePosts();
+$('#profile-view-dialog').addEventListener('close',()=>{profileViewVersion++;resetProfilePosts()});
